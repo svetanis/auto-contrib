@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>auto-contrib A2UI</title>
+    <!-- Modern Typography: Google Fonts Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- Mermaid JS for Architecture Maps -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+    <header class="top-nav">
+        <div class="logo-container">
+            <h1>auto-contrib</h1>
+            <span class="badge">A2UI Dashboard</span>
+        </div>
+        <div class="status-indicator">
+            <span class="pulse"></span>
+            Agent Status: <span id="agent-state">Awaiting Orders</span>
+        </div>
+    </header>
+
+    <div class="prompt-container glass-container" style="max-width: 1400px; margin: 1rem auto; width: 100%; box-sizing: border-box; padding: 1rem; display: flex; gap: 1rem;">
+        <input type="text" id="agent-prompt" placeholder="Enter instructions for the agent..." style="flex-grow: 1; width: 100%; padding: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 4px;" value="Please fix the add() method in the Calculator class so it adds instead of subtracts. The repository is located locally at: ../auto-contrib-sandbox">
+        <button id="btn-run-agent" class="btn primary">Run Agent</button>
+        <button id="btn-new-task" class="btn secondary" title="Clear session and start a fresh task">New Task</button>
+    </div>
+
+    <main class="dashboard-grid">
+        <!-- Left Panel: Architecture & Tests -->
+        <section class="panel left-panel">
+            <div class="card architecture-card">
+                <h2>Architecture Map</h2>
+                <div id="mermaid-container" class="glass-container">
+                    <!-- Mermaid diagram will be injected here -->
+                    <div class="mermaid">
+                        classDiagram
+                          class A2UI_Initializing
+                    </div>
+                </div>
+            </div>
+
+            <div class="card test-logs-card">
+                <h2>CI/CD Test Logs</h2>
+                <pre id="terminal-output" class="terminal glass-container">Waiting for GitHub Actions...</pre>
+            </div>
+        </section>
+
+        <!-- Right Panel: Diffs & PR Actions -->
+        <section class="panel right-panel">
+            <div class="card vibe-diff-card">
+                <h2>Vibe Diff</h2>
+                <div class="glass-container diff-content">
+                    <p id="vibe-summary">No changes staged.</p>
+                    <div class="action-buttons" id="approval-buttons" style="display: none; margin-top: 1rem;">
+                        <button id="btn-approve" class="btn primary">Approve</button>
+                        <button id="btn-reject" class="btn secondary">Reject</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card pr-compliance-card">
+                <h2>PR Compliance</h2>
+                <div class="glass-container">
+                    <p><strong>Title:</strong> <span id="pr-title">-</span></p>
+                    <p><strong>DCO Status:</strong> <span id="dco-status">Unsigned</span></p>
+                    <div class="action-buttons">
+                        <button id="btn-squash-push" class="btn primary" disabled>Squash & Push PR</button>
+                        <button id="btn-request-changes" class="btn secondary">Request Changes</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // Initialize Mermaid for rendering diagrams (v10+ API)
+        mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+    </script>
+    <script src="app.js"></script>
+</body>
+</html>

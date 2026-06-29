@@ -1,0 +1,32 @@
+[
+  {
+    "id": "ISSUE-001",
+    "description": "NullPointerException when session token is expired in AuthenticationManager.",
+    "expected_files_modified": ["AuthenticationManager.java", "AuthenticationManagerTest.java"],
+    "expected_pr_type": "fix"
+  },
+  {
+    "id": "ISSUE-002",
+    "description": "Add dark mode toggle support to the global CSS variables.",
+    "expected_files_modified": ["styles.css", "ThemeToggle.ts", "ThemeToggle.test.ts"],
+    "expected_pr_type": "feat"
+  },
+  {
+    "id": "ISSUE-003",
+    "description": "API Gateway times out after 30 seconds. Increase timeout to 60 seconds.",
+    "expected_files_modified": ["gateway.go", "gateway_test.go"],
+    "expected_pr_type": "fix"
+  },
+  {
+    "id": "ISSUE-004",
+    "description": "Refactor VectorStore to use Cosine Similarity instead of Euclidean distance.",
+    "expected_files_modified": ["vector_store.py", "test_vector_store.py"],
+    "expected_pr_type": "refactor"
+  },
+  {
+    "id": "ISSUE-005",
+    "description": "Update the README to include the new Docker installation instructions.",
+    "expected_files_modified": ["README.md"],
+    "expected_pr_type": "docs"
+  }
+]
