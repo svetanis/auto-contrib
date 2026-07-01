@@ -10,6 +10,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     <!-- Mermaid JS for Architecture Maps -->
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <!-- svg-pan-zoom: makes the architecture diagram zoomable/pannable -->
+    <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
     <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
@@ -25,28 +27,34 @@
     </header>
 
     <div class="prompt-container glass-container" style="max-width: 1400px; margin: 1rem auto; width: 100%; box-sizing: border-box; padding: 1rem; display: flex; gap: 1rem;">
-        <input type="text" id="agent-prompt" placeholder="Enter instructions for the agent..." style="flex-grow: 1; width: 100%; padding: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 4px;" value="Please fix the add() method in the Calculator class so it adds instead of subtracts. The repository is located locally at: ../auto-contrib-sandbox">
+        <input type="text" id="agent-prompt" placeholder="Enter instructions for the agent..." style="flex-grow: 1; width: 100%; padding: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 4px;">
         <button id="btn-run-agent" class="btn primary">Run Agent</button>
         <button id="btn-new-task" class="btn secondary" title="Clear session and start a fresh task">New Task</button>
     </div>
 
-    <main class="dashboard-grid">
-        <!-- Left Panel: Architecture & Tests -->
-        <section class="panel left-panel">
-            <div class="card architecture-card">
-                <h2>Architecture Map</h2>
-                <div id="mermaid-container" class="glass-container">
-                    <!-- Mermaid diagram will be injected here -->
-                    <div class="mermaid">
-                        classDiagram
-                          class A2UI_Initializing
-                    </div>
+    <!-- Full-width Architecture Map — a module dependency graph (flowchart LR)
+         needs horizontal room, so it spans the full width above the grid. -->
+    <section class="architecture-fullwidth">
+        <div class="card architecture-card">
+            <h2>Architecture Map <span style="font-weight:300;font-size:0.7rem;color:#8aa">— dependency graph preview · click ⛶ for the full view</span>
+                <button id="btn-expand-map" class="btn secondary btn-inline" title="Open the diagram full-screen">⛶ Fullscreen</button>
+            </h2>
+            <div id="mermaid-container" class="glass-container" style="height: 460px; overflow: hidden; position: relative;">
+                <!-- Mermaid diagram will be injected here -->
+                <div class="mermaid">
+                    flowchart LR
+                      A2UI_Initializing
                 </div>
             </div>
+        </div>
+    </section>
 
+    <main class="dashboard-grid">
+        <!-- Left Panel: the agent's live console (trajectory + CI + PR output) -->
+        <section class="panel left-panel">
             <div class="card test-logs-card">
-                <h2>CI/CD Test Logs</h2>
-                <pre id="terminal-output" class="terminal glass-container">Waiting for GitHub Actions...</pre>
+                <h2>Agent Console <span style="font-weight:300;font-size:0.7rem;color:#8aa">— live trajectory · tool calls · CI output</span></h2>
+                <pre id="terminal-output" class="terminal glass-container">Awaiting orders — enter a prompt and press Run.</pre>
             </div>
         </section>
 
@@ -56,6 +64,8 @@
                 <h2>Vibe Diff</h2>
                 <div class="glass-container diff-content">
                     <p id="vibe-summary">No changes staged.</p>
+                    <div id="vibe-file" class="diff-file" style="display:none;"></div>
+                    <pre id="vibe-diff" class="diff-view" style="display:none;"></pre>
                     <div class="action-buttons" id="approval-buttons" style="display: none; margin-top: 1rem;">
                         <button id="btn-approve" class="btn primary">Approve</button>
                         <button id="btn-reject" class="btn secondary">Reject</button>
@@ -69,13 +79,23 @@
                     <p><strong>Title:</strong> <span id="pr-title">-</span></p>
                     <p><strong>DCO Status:</strong> <span id="dco-status">Unsigned</span></p>
                     <div class="action-buttons">
-                        <button id="btn-squash-push" class="btn primary" disabled>Squash & Push PR</button>
+                        <button id="btn-squash-push" class="btn primary" disabled>Submit PR</button>
                         <button id="btn-request-changes" class="btn secondary">Request Changes</button>
                     </div>
                 </div>
             </div>
         </section>
     </main>
+
+    <!-- Fullscreen diagram overlay: the dependency graph often needs the whole
+         viewport (esp. tall graphs) — the in-card view is only a preview. -->
+    <div id="mermaid-fullscreen" class="fs-overlay" style="display:none;">
+        <div class="fs-toolbar">
+            <span class="fs-title">Architecture Map — full view <span style="font-weight:300;color:#8aa;font-size:0.8rem">· scroll to zoom · drag to pan</span></span>
+            <button id="btn-close-map" class="btn secondary">✕ Close (Esc)</button>
+        </div>
+        <div id="mermaid-fs-content" class="fs-content"></div>
+    </div>
 
     <script>
         // Initialize Mermaid for rendering diagrams (v10+ API)

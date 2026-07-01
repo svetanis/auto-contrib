@@ -4,6 +4,95 @@ document.addEventListener('DOMContentLoaded', () => {
     const terminalOutput = document.getElementById('terminal-output');
     const agentState = document.getElementById('agent-state');
 
+    const escapeHtml = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+    let lastMermaid = '';  // most recent diagram source, for the fullscreen view
+
+    // Render Mermaid source into a container and make it zoom/pan-able. Shared by
+    // the in-card preview and the fullscreen overlay.
+    function renderMermaidInto(container, source, idPrefix) {
+        const id = idPrefix + Date.now();
+        container.innerHTML = `<div class="mermaid" id="${id}">${source}</div>`;
+        // mermaid.run() is the v10+ API for dynamically injected content.
+        setTimeout(async () => {
+            try {
+                await mermaid.run({ nodes: [document.getElementById(id)] });
+                const svg = document.getElementById(id).querySelector('svg');
+                if (svg && window.svgPanZoom) {
+                    svg.setAttribute('width', '100%');
+                    svg.setAttribute('height', '100%');
+                    svg.style.maxWidth = 'none';
+                    const pz = svgPanZoom(svg, {
+                        zoomEnabled: true,
+                        controlIconsEnabled: true,
+                        fit: true,
+                        center: true,
+                        minZoom: 0.1,
+                        maxZoom: 20,
+                    });
+                    // Re-fit once layout has fully settled (esp. inside the
+                    // fullscreen overlay, where the container may size after init).
+                    setTimeout(() => { pz.resize(); pz.fit(); pz.center(); }, 80);
+                }
+            } catch (err) {
+                console.error('Mermaid error:', err);
+                container.innerHTML = `<pre style="color:#aaa;font-size:0.75rem;padding:1rem;overflow:auto;max-height:100%">${escapeHtml(source)}</pre>`;
+            }
+        }, 50);
+    }
+
+    // Fullscreen diagram overlay: re-render the last diagram into the full viewport.
+    const fsOverlay = document.getElementById('mermaid-fullscreen');
+    function openMapFullscreen() {
+        if (!lastMermaid) return;
+        fsOverlay.style.display = 'flex';
+        renderMermaidInto(document.getElementById('mermaid-fs-content'), lastMermaid, 'mermaid-fs-');
+    }
+    function closeMapFullscreen() {
+        fsOverlay.style.display = 'none';
+        document.getElementById('mermaid-fs-content').innerHTML = '';
+    }
+    document.getElementById('btn-expand-map').addEventListener('click', openMapFullscreen);
+    document.getElementById('btn-close-map').addEventListener('click', closeMapFullscreen);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && fsOverlay.style.display === 'flex') closeMapFullscreen();
+    });
+    // Hide the Fullscreen button until a diagram exists.
+    document.getElementById('btn-expand-map').style.visibility = 'hidden';
+
+    // Render the actual code change as a compact hunk: trim the lines that
+    // old/new share at the top and bottom, mark only what really changed, and
+    // keep a few lines of context. Lets a human approve on what they SEE.
+    function renderDiff(oldText, newText, filepath) {
+        const fileEl = document.getElementById('vibe-file');
+        const diffEl = document.getElementById('vibe-diff');
+        if (!oldText && !newText) {
+            fileEl.style.display = 'none';
+            diffEl.style.display = 'none';
+            return;
+        }
+        const CTX = 3;
+        const o = (oldText || '').split('\n');
+        const n = (newText || '').split('\n');
+        let start = 0;
+        while (start < o.length && start < n.length && o[start] === n[start]) start++;
+        let endO = o.length, endN = n.length;
+        while (endO > start && endN > start && o[endO - 1] === n[endN - 1]) { endO--; endN--; }
+
+        const rows = [];
+        for (let i = Math.max(0, start - CTX); i < start; i++) rows.push(['ctx', o[i]]);
+        for (let i = start; i < endO; i++) rows.push(['del', o[i]]);
+        for (let i = start; i < endN; i++) rows.push(['add', n[i]]);
+        for (let i = endO; i < Math.min(o.length, endO + CTX); i++) rows.push(['ctx', o[i]]);
+
+        diffEl.innerHTML = rows
+            .map(([cls, text]) => `<span class="row ${cls}">${escapeHtml(text)}</span>`)
+            .join('');
+        fileEl.textContent = filepath || '';
+        fileEl.style.display = filepath ? 'block' : 'none';
+        diffEl.style.display = 'block';
+    }
+
     runBtn.addEventListener('click', async () => {
         const prompt = promptInput.value.trim();
         if (!prompt) return;
@@ -46,18 +135,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
 
                             if (data.mermaid) {
-                                const container = document.getElementById('mermaid-container');
-                                const id = 'mermaid-' + Date.now();
-                                container.innerHTML = `<div class="mermaid" id="${id}">${data.mermaid}</div>`;
-                                // mermaid.run() is the v10+ API for rendering dynamically injected content
-                                setTimeout(async () => {
-                                    try {
-                                        await mermaid.run({ nodes: [document.getElementById(id)] });
-                                    } catch(err) {
-                                        console.error("Mermaid error:", err);
-                                        container.innerHTML = `<pre style="color:#aaa;font-size:0.75rem;padding:1rem">${data.mermaid}</pre>`;
-                                    }
-                                }, 50);
+                                lastMermaid = data.mermaid;
+                                renderMermaidInto(document.getElementById('mermaid-container'), data.mermaid, 'mermaid-');
+                                document.getElementById('btn-expand-map').style.visibility = 'visible';
                             }
 
                             if (data.status === 'complete') {
@@ -68,7 +148,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (data.approval_required) {
                                 agentState.textContent = 'Awaiting Approval';
                                 document.getElementById('vibe-summary').textContent = data.proposed_solution || '';
+                                renderDiff(data.old_text, data.new_text, data.filepath);
                                 document.getElementById('approval-buttons').style.display = 'block';
+                                document.querySelector('.vibe-diff-card').classList.add('awaiting');
                                 runBtn.disabled = false;
                             }
 
@@ -93,6 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn-approve').addEventListener('click', async () => {
         document.getElementById('approval-buttons').style.display = 'none';
+        document.querySelector('.vibe-diff-card').classList.remove('awaiting');
         agentState.textContent = 'Executing...';
         terminalOutput.textContent += '\n[User Approved] Executing edit and push...\n';
 
@@ -105,13 +188,20 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.cicd_status) {
                 terminalOutput.textContent += `\n[CI/CD] ${data.cicd_status}\n`;
             }
-            if (data.ci_passed) {
+            // Enable PR submission once the branch is pushed. Some repos only run
+            // CI on the pull_request event, so we must allow opening the PR even
+            // when no branch-level CI run exists yet (CI then runs on the PR).
+            if (data.branch_name) {
                 document.getElementById('btn-squash-push').disabled = false;
                 document.getElementById('pr-title').textContent = `fix: ${document.getElementById('vibe-summary').textContent.slice(0, 60)}`;
                 document.getElementById('dco-status').textContent = 'Signed-off \u2705';
+            }
+            if (data.ci_passed) {
                 agentState.textContent = 'CI/CD Passed \u2705';
             } else if (data.branch_name) {
-                agentState.textContent = data.cicd_status ? 'CI/CD Failed \u274c' : 'Branch Pushed \u2713';
+                agentState.textContent = data.cicd_status
+                    ? 'CI/CD Failed \u274c'
+                    : 'Branch Pushed \u2713 \u2014 open PR to run CI';
             }
         } else {
             terminalOutput.textContent += `[Error] ${data.message}\n`;
@@ -123,6 +213,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn-reject').addEventListener('click', async () => {
         document.getElementById('approval-buttons').style.display = 'none';
+        document.querySelector('.vibe-diff-card').classList.remove('awaiting');
+        document.getElementById('vibe-file').style.display = 'none';
+        document.getElementById('vibe-diff').style.display = 'none';
         await fetch('/api/reject', { method: 'POST' });
         terminalOutput.textContent += '\n[User Rejected] Edit cancelled.\n';
         agentState.textContent = 'Awaiting Orders';
@@ -134,6 +227,9 @@ document.addEventListener('DOMContentLoaded', () => {
         terminalOutput.textContent = '';
         document.getElementById('vibe-summary').textContent = 'No changes staged.';
         document.getElementById('approval-buttons').style.display = 'none';
+        document.querySelector('.vibe-diff-card').classList.remove('awaiting');
+        document.getElementById('vibe-file').style.display = 'none';
+        document.getElementById('vibe-diff').style.display = 'none';
         document.getElementById('btn-squash-push').disabled = true;
         document.getElementById('pr-title').textContent = '-';
         document.getElementById('dco-status').textContent = 'Unsigned';
@@ -154,7 +250,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (data.status === 'submitted') {
             terminalOutput.textContent += `\n[PR] ${data.result}\n`;
-            agentState.textContent = 'PR Submitted ✅';
+            if (data.cicd_status) {
+                terminalOutput.textContent += `\n[CI/CD] ${data.cicd_status}\n`;
+            }
+            agentState.textContent = data.ci_passed
+                ? 'PR Submitted — CI Passed ✅'
+                : 'PR Submitted ✅';
             // Extract and display PR URL
             const urlMatch = data.result.match(/https:\/\/github\.com\/\S+/);
             if (urlMatch) {

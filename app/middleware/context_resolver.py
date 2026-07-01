@@ -24,7 +24,9 @@ from typing import Optional
 _PATTERNS = [
     # GitHub/API tokens
     ("GITHUB_TOKEN",    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b")),
-    ("API_KEY",         re.compile(r"\b[A-Za-z0-9]{32,45}\b")),
+    # Prefix-anchored vendor key formats only — a bare {32,45} alnum run would
+    # also swallow git SHAs, base64 chunks, and hashes, corrupting real content.
+    ("API_KEY",         re.compile(r"\b(?:sk|pk|rk)-[A-Za-z0-9]{16,}\b|\bAKIA[0-9A-Z]{16}\b|\bAIza[0-9A-Za-z_\-]{16,}\b")),
     # Email addresses
     ("EMAIL",           re.compile(r"\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b")),
     # IPv4 addresses

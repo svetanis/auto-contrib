@@ -6,6 +6,8 @@ import urllib.error
 import urllib.request
 from mcp.types import Tool, TextContent
 
+from app.middleware.context_resolver import resolve
+
 
 def get_tool() -> Tool:
     return Tool(
@@ -100,4 +102,7 @@ async def execute(arguments: dict) -> list[TextContent]:
                         )
 
     summary = "\n".join(failed_steps) if failed_steps else "  (see URL for full logs)"
-    return [TextContent(type="text", text=f"CI/CD FAILED (conclusion: {conclusion})\nFailed steps:\n{summary}\nURL: {html_url}")]
+    failure_text = f"CI/CD FAILED (conclusion: {conclusion})\nFailed steps:\n{summary}\nURL: {html_url}"
+    # Context Hygiene: scrub any secrets/PII leaked in CI step names/logs before
+    # this external text enters the LLM's context window.
+    return [TextContent(type="text", text=resolve(failure_text))]

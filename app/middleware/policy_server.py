@@ -18,6 +18,7 @@ from typing import Any
 _PASSTHROUGH_TOOLS = frozenset({
     "map_architecture",
     "read_file",
+    "get_github_issue",
     "list_skills",
     "load_skill",
     "load_skill_resource",
@@ -76,9 +77,11 @@ def _check_structural(tool_name: str, args: dict[str, Any]) -> str | None:
 
 # ── Tier 2: Semantic checks ───────────────────────────────────────────────────
 
+# Only truly destructive filesystem/disk operations — a legitimate bug fix should
+# almost never introduce these. Language builtins like eval()/exec()/subprocess
+# were removed because they false-positive on valid code the agent must edit.
 _DANGEROUS_PATTERNS = re.compile(
-    r"(rm\s+-rf|drop\s+table|delete\s+from|os\.remove|shutil\.rmtree|"
-    r"subprocess\.call|eval\(|exec\(|__import__)",
+    r"(rm\s+-rf\s+/|shutil\.rmtree|os\.remove|os\.unlink|format\s+c:|mkfs\.)",
     re.IGNORECASE,
 )
 
@@ -108,7 +111,15 @@ def _check_write_scope(tool_name: str, args: dict[str, Any]) -> str | None:
         return None
 
     abs_path = os.path.abspath(path_arg)
-    if not any(abs_path.startswith(os.path.abspath(d)) for d in allowed):
+    # Use commonpath (not startswith) so '/work/repo' does not also authorize
+    # sibling dirs like '/work/repo-evil' that merely share a string prefix.
+    def _within(child: str, parent: str) -> bool:
+        parent = os.path.abspath(parent)
+        try:
+            return os.path.commonpath([child, parent]) == parent
+        except ValueError:
+            return False  # different drives on Windows
+    if not any(_within(abs_path, d) for d in allowed):
         return (
             f"{tool_name}: path '{path_arg}' is outside the allowed workspace. "
             f"Allowed dirs: {allowed}"

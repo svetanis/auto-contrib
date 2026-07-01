@@ -20,18 +20,24 @@ def load_dataset() -> list[dict]:
 # ── Scoring ───────────────────────────────────────────────────────────────────
 
 def score_compliance(expected: dict, actual_files: list[str], actual_pr_title: str) -> float:
-    """Scores PR compliance based on modified files and Conventional Commits title."""
+    """Scores PR compliance based on modified files and Conventional Commits title.
+
+    File matching is fractional (partial credit) rather than all-or-nothing: the
+    HITL flow proposes one file per approval, so demanding every expected file at
+    once would force the score to 0 on any multi-file scenario.
+    """
     score = 0.0
 
-    matched_files = set(expected["expected_files_modified"]).intersection(set(actual_files))
-    if len(matched_files) == len(expected["expected_files_modified"]):
-        score += 0.5
+    expected_files = expected["expected_files_modified"]
+    if expected_files:
+        matched_files = set(expected_files).intersection(set(actual_files))
+        score += 0.5 * (len(matched_files) / len(expected_files))
 
     if actual_pr_title.startswith(f"{expected['expected_pr_type']}(") or \
        actual_pr_title.startswith(f"{expected['expected_pr_type']}:"):
         score += 0.5
 
-    return score
+    return round(score, 2)
 
 
 def score_trajectory(tool_calls: list[str]) -> float:

@@ -7,6 +7,8 @@ import urllib.parse
 import urllib.request
 from mcp.types import Tool, TextContent
 
+from app.github_tools.feature_branch import _default_branch
+
 
 def get_tool() -> Tool:
     return Tool(
@@ -22,11 +24,41 @@ def get_tool() -> Tool:
                 "branch_name": {"type": "string", "description": "Feature branch to merge from"},
                 "title": {"type": "string", "description": "PR title (Conventional Commits style, e.g. 'fix: correct add() method')"},
                 "body": {"type": "string", "description": "PR description explaining what was changed and why"},
-                "base": {"type": "string", "description": "Target branch to merge into (default: main)"},
+                "base": {"type": "string", "description": "Target branch to merge into (default: the repo's default branch, e.g. main or master)"},
             },
             "required": ["local_dir", "branch_name", "title", "body"],
         },
     )
+
+
+# Default PR body template, used when the target repo ships no template of its own.
+_DEFAULT_BODY_TEMPLATE = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "templates", "default_pr_body.md"
+)
+
+# Minimal fallback if the template file is somehow missing (keeps PR creation working).
+_FALLBACK_BODY = "### Description of Change\n\n{{CLOSES}}**Problem & Solution:**\n{{DESCRIPTION}}"
+
+
+def build_default_pr_body(description: str, closes: str = "") -> str:
+    """Builds a structured PR body for repos that ship no PR template.
+
+    Loads `app/templates/default_pr_body.md` and fills its placeholders:
+      {{DESCRIPTION}} — the change summary
+      {{CLOSES}}      — an optional "Closes: <ref>" line (blank when no ref)
+
+    The template mirrors the common OSS shape (Problem/Solution · Testing ·
+    Checklist), but every checked box reflects something auto-contrib actually
+    guarantees: the diff was human-approved and CI passed.
+    """
+    try:
+        with open(_DEFAULT_BODY_TEMPLATE, "r", encoding="utf-8") as f:
+            template = f.read()
+    except OSError:
+        template = _FALLBACK_BODY
+
+    closes_line = f"Closes: {closes}\n\n" if closes else ""
+    return template.replace("{{CLOSES}}", closes_line).replace("{{DESCRIPTION}}", description)
 
 
 def _fill_pr_template(template: str, description: str) -> str:
@@ -66,7 +98,8 @@ async def execute(arguments: dict) -> list[TextContent]:
     branch_name = arguments["branch_name"]
     title = arguments["title"]
     body = arguments["body"]
-    base = arguments.get("base", "main")
+    # Resolve the real default branch (main vs master) unless the caller pinned one.
+    base = arguments.get("base") or _default_branch(local_dir)
 
     token = (
         os.environ.get("COPILOT_GITHUB_TOKEN")

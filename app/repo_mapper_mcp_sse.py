@@ -14,9 +14,11 @@ mcp = FastMCP("repo-mapper-mcp")
 
 @mcp.tool()
 async def map_architecture(local_dir: str) -> str:
-    """Extracts class and function signatures from all Python, Java, Go, and TypeScript
-    files in a directory. Returns a Mermaid classDiagram with %% file: <absolute_path>
-    comments — use those absolute paths when calling read_file.
+    """Builds a module dependency graph of a repository. Returns a Mermaid
+    flowchart whose nodes are source modules (grouped into package subgraphs) and
+    whose edges are intra-repo imports, so you can see how the code fits together.
+    Each module has a '%% file: <absolute_path>' comment — use those absolute
+    paths when calling read_file.
 
     Args:
         local_dir: Path to the repository directory to analyse.

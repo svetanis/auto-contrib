@@ -200,19 +200,33 @@ async def submit_pr_endpoint(req: SubmitPrRequest):
 
     # Auto-generate Conventional Commits title if not provided
     title = req.title.strip() or f"fix: {proposed[:60].rstrip('.')}"
-    body = req.body.strip() or f"Automated fix applied by auto-contrib agent.\n\n{proposed}"
-
     from app.github_tools import submit_pr as _mod
+    body = req.body.strip() or _mod.build_default_pr_body(proposed)
+
     results = await _mod.execute({
         "local_dir": local_dir,
         "branch_name": branch_name,
         "title": title,
         "body": body,
-        "base": "main",
+        "base": "",  # auto-detect the repo's default branch (main vs master)
     })
     text = results[0].text if results else "Unknown result"
     ok = text.startswith("Pull Request submitted!")
-    return {"status": "submitted" if ok else "error", "result": text}
+
+    # Many real repos gate CI on `pull_request`, so the workflow only starts once
+    # the PR exists. Poll now (after the PR is open) to surface the result.
+    cicd_status = ""
+    if ok:
+        from app.agent import poll_github_actions_logs
+        await asyncio.sleep(15)
+        cicd_status = poll_github_actions_logs(local_dir, branch_name)
+
+    return {
+        "status": "submitted" if ok else "error",
+        "result": text,
+        "cicd_status": cicd_status,
+        "ci_passed": cicd_status.startswith("CI/CD PASSED"),
+    }
 
 
 # Serve the static files

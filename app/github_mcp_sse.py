@@ -13,6 +13,26 @@ mcp = FastMCP("github-mcp")
 
 
 @mcp.tool()
+async def get_github_issue(local_dir: str, issue_number: str, repo: str = "") -> str:
+    """Fetches a GitHub issue's title, body, and comments so you understand the problem.
+    Call this FIRST when the user references an issue number — it tells you what is broken
+    so you can investigate the code and propose a fix. Auto-detects the upstream repo when
+    the local clone is a fork (issues live upstream, not on the fork).
+
+    Args:
+        local_dir: Local repository directory.
+        issue_number: Issue number, e.g. '175'.
+        repo: Optional 'owner/name' override; defaults to the origin remote (or its
+            upstream parent when origin is a fork).
+    """
+    from app.github_tools import get_issue as _mod
+    results = await _mod.execute(
+        {"local_dir": local_dir, "issue_number": issue_number, "repo": repo}
+    )
+    return results[0].text if results else ""
+
+
+@mcp.tool()
 async def read_file(filepath: str) -> str:
     """Reads and returns the full contents of a file.
     Use this to inspect source code before proposing edits so you can copy old_text verbatim.
@@ -70,7 +90,7 @@ async def submit_pull_request(
     branch_name: str,
     title: str,
     body: str,
-    base: str = "main",
+    base: str = "",
 ) -> str:
     """Submits a Pull Request via the GitHub API. Call after CI/CD passes.
     Title must follow Conventional Commits format (e.g. 'fix(scope): message').
@@ -80,7 +100,8 @@ async def submit_pull_request(
         branch_name: Feature branch to merge from.
         title: PR title in Conventional Commits format.
         body: PR description explaining what was changed and why.
-        base: Target branch (default: main).
+        base: Target branch. Leave empty to auto-detect the repo's default branch
+            (main or master).
     """
     from app.github_tools import submit_pr as _mod
     results = await _mod.execute({
