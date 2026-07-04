@@ -16,7 +16,8 @@ fork — no maintainer risk.
 
 Built for the Kaggle *AI Agents: Intensive Vibe Coding* capstone with
 **Google ADK**, **Gemini 2.5 Flash**, the **Model Context Protocol**, and
-**Agent Skills**.
+**Agent Skills**. Team of 1 ([svetanis](https://github.com/svetanis)) + Claude
+(Anthropic) as AI pair-programmer.
 
 📄 Full competition writeup: [kaggle-writeup.md](kaggle-writeup.md)
 🚀 How to run it (step-by-step): [USAGE.md](USAGE.md)
@@ -164,6 +165,40 @@ then **Submit PR** to open the pull request and run CI on it.
 
 > The two MCP servers start automatically in background threads on ports 8001 /
 > 8002 when the agent module loads — no separate process to manage.
+
+---
+
+## Screenshots
+
+**Idle dashboard** — Architecture Map, Agent Console, Vibe Diff, and PR
+Compliance panels:
+
+![Dashboard](media/1.png)
+
+**The HITL approval gate** — the Vibe Diff card glows amber and renders the
+exact red/green code diff, pausing until a human decides (shown fixing
+`python-slugify` issue #175):
+
+![Vibe Diff approval gate](media/5.png)
+
+**Fullscreen dependency graph** — the zoomable/pannable architecture map:
+
+![Fullscreen architecture map](media/3.png)
+
+**A real, human-approved pull request** — opened on the fork, filled from
+auto-contrib's default PR-body template:
+
+![Pull request](media/8.png)
+
+**CI green** on the pull request:
+
+![CI passing](media/9.png)
+
+**Repo-native PR template detection** — the sandbox `Calculator` repo ships
+its own PR template, and `submit_pull_request` fills that one instead of
+falling back to the default:
+
+![Sandbox pull request with repo-native template](media/11.png)
 
 ---
 

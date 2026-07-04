@@ -1,53 +1,54 @@
 # auto-contrib — An Autonomous, Human-Gated GitHub Contribution Agent
 
 **Kaggle "AI Agents: Intensive Vibe Coding" Capstone**
-**Track:** Agents for Business / Freestyle
+**Track:** Freestyle
+**Team:** 1 ([svetanis](https://github.com/svetanis)) + Claude (Anthropic) as AI pair-programmer
 **Built with:** Google ADK · Gemini 2.5 Flash · Model Context Protocol · Agent Skills
+
+🎥 Demo video: https://www.youtube.com/watch?v=sbzLFtCBOos
+📦 Project repo: https://github.com/svetanis/auto-contrib
+📜 License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 
 ---
 
 ## 1. The Problem & Why It Matters
 
-Contributing to an unfamiliar codebase is slow and intimidating. Before a
-developer can fix even a one-line bug in an open-source project, they have to map
-an unfamiliar architecture, find the right file, match the repo's conventions,
-write a test, wait on CI, and open a pull request that satisfies the
-maintainers' template. That friction is why so many "good first issues" sit
-untouched for months, and why internal engineering teams burn senior time
-onboarding people onto services they rarely touch.
+Contributing to an unfamiliar codebase is slow and intimidating: mapping the
+architecture, finding the right file, matching conventions, waiting on CI, and
+opening a PR that satisfies the maintainers' template. That friction is why
+"good first issues" sit untouched for months, and why engineering teams burn
+senior time onboarding people onto code they rarely touch.
 
-**auto-contrib** compresses that entire loop into a single, supervised session.
-Given a repository and a GitHub **issue number** (or a plain bug description),
-the agent fetches the issue, maps the architecture, locates the offending code,
+**auto-contrib** compresses that loop into a single, supervised session. Given
+a repository and a GitHub **issue number** (or a plain bug description), the
+agent fetches the issue, maps the architecture, locates the offending code,
 creates a feature branch, and proposes a precise fix — then **stops and asks a
 human to approve the exact diff** before anything is written or pushed. Once
-approved, it commits, pushes, opens a Conventional-Commits-compliant pull
-request, and polls GitHub Actions CI on that PR.
+approved, it commits, pushes, opens a Conventional-Commits pull request, and
+polls CI on that PR.
 
-Crucially, it runs against **real open-source repositories**: pointed at a fork,
-it auto-detects the upstream parent to read the issue (forks don't carry issues),
-branches from the repo's real default branch (`main` *or* `master`), and opens
-the PR back to the fork — demonstrating the full contribution loop on genuine
-code with zero risk to any maintainer.
+Crucially, it runs against **real open-source repositories**: pointed at a
+fork, it auto-detects the upstream parent to read the issue, branches from the
+repo's real default branch (`main` or `master`), and opens the PR back to the
+fork — the full contribution loop on genuine code, zero risk to any
+maintainer.
 
-The value proposition is deliberately narrow and real: it does not try to be an
-autonomous developer. It is a **contribution accelerator with a human in the
-loop** — the agent does the tedious navigation and mechanics; the human keeps
-judgment and authority over every change that touches the repository. That
-framing maps directly onto the Day 4 white paper's distinction between *security*
-("did the agent stay in bounds?") and *evaluation* ("was what it did worth
-shipping?"). auto-contrib answers the first with a hard approval gate and a
-policy server, and the second with an evaluation suite.
+The value proposition is deliberately narrow: not an autonomous developer, but
+a **contribution accelerator with a human in the loop** — the agent handles
+navigation and mechanics; the human keeps judgment and authority. This maps to
+the Day 4 distinction between *security* ("did the agent stay in bounds?") and
+*evaluation* ("was what it did worth shipping?") — answered here by a hard
+approval gate plus policy server, and an evaluation suite, respectively.
 
 ---
 
 ## 2. Architecture Overview
 
-auto-contrib is a single ADK agent (`root_agent`) whose capabilities are
-assembled from three composable layers — **Skills** (procedural know-how), **MCP
-servers** (reach into Git/GitHub and code analysis), and a **security layer**
-(policy gate, context hygiene, HITL approval). A FastAPI application streams the
-agent's reasoning to a custom browser dashboard over Server-Sent Events.
+auto-contrib is a single ADK agent (`root_agent`) assembled from three layers
+— **Skills** (know-how), **MCP servers** (reach into Git/GitHub and code
+analysis), and a **security layer** (policy gate, context hygiene, HITL
+approval). A FastAPI app streams the agent's reasoning to a browser dashboard
+over Server-Sent Events.
 
 ```
 User Prompt ("fix the bug in calculator.py at <repo>")
@@ -85,271 +86,232 @@ auto-contrib Agent  (ADK · Gemini 2.5 Flash, rate-limited)
            └── POST /api/submit-pr → opens the PR, then polls CI on it
 ```
 
-The happy-path trajectory is: `get_github_issue` *(when an issue is named)* →
+The happy-path trajectory: `get_github_issue` *(when an issue is named)* →
 `map_architecture` → `read_file` → `create_feature_branch` →
 `request_user_approval` **(pause)** → human approves → edit + push →
-`submit_pull_request` → `poll_github_actions_logs`. The PR is opened *before* the
-CI poll because real repositories commonly trigger CI on the `pull_request`
-event, so the workflow only starts once the PR exists.
+`submit_pull_request` → `poll_github_actions_logs`. The PR opens *before* the
+CI poll because most repos trigger CI on the `pull_request` event.
 
 ---
 
 ## 3. Key Concepts Applied
 
-The capstone asks entrants to apply at least three of six concept areas.
-auto-contrib implements **four in working code** — Agent/Multi-agent (ADK), MCP
-Server, Agent Skills, and Security features — and demonstrates a fifth
-(Deployability) through containerization.
+The capstone asks for at least three of six concept areas; auto-contrib
+implements **four in working code** — Agent/Multi-agent (ADK), MCP Server,
+Agent Skills, Security — plus a fifth (Deployability) via containerization.
 
 ### 3.1 Agent / Multi-Agent with ADK (Day 1)
 
-The Day 1 paper's central thesis is the *factory model*: the developer's job is
-to engineer the system that produces code — the harness of prompts, tools,
-sandboxes, and guardrails — rather than to write code directly. auto-contrib is
-built as exactly that harness. The agent itself is thin; its behavior comes from
-the orchestration of skills, MCP tools, and policy callbacks wired around it in
-`app/agent.py`.
+The Day 1 "factory model" says the developer's job is to engineer the harness
+— prompts, tools, guardrails — not write code directly. auto-contrib is that
+harness: a thin agent whose behavior comes from skills, MCP tools, and policy
+callbacks wired in `app/agent.py`.
 
-Rather than a monolithic prompt, the workflow is decomposed into four skills that
-the model loads on demand, giving the single agent a multi-stage,
-multi-persona-style pipeline (mapper → implementer → debugger → PR formatter)
-while keeping one coherent session and history. A custom `RateLimitedGemini`
-wrapper enforces a requests-per-minute budget (sleeping rather than failing when
-near the cap) and, when the primary model is overloaded (503) or quota-limited
-(429), transparently **fails over to a sibling model** (`gemini-2.5-flash-lite`,
-then `gemini-flash-latest`, …) — each has its own capacity/quota pool, so one
-model's limit no longer kills a run. Only if every fallback is also exhausted does
-it surface a clean, actionable error with the API's own retry hint. This is a
-small but concrete piece of "engineering the factory" rather than trusting the
-model to behave.
+The workflow decomposes into four skills the model loads on demand (mapper →
+implementer → debugger → PR formatter) while keeping one coherent session. A
+custom `RateLimitedGemini` wrapper enforces a per-minute budget and, on
+overload (503) or quota limits (429), transparently **fails over to a sibling
+model** (`gemini-2.5-flash-lite`, then others) — each has its own quota pool,
+so one model's limit no longer kills a run.
 
 ### 3.2 MCP Server (Days 2 & 5)
 
-Day 2 frames MCP as the standard that collapses integration cost from O(N×M) to
-O(N+M); Day 5 shows how little code a server actually needs. auto-contrib ships
-**two** MCP servers built with FastMCP and exposed over HTTP/SSE:
+auto-contrib ships **two** MCP servers over HTTP/SSE:
 
-- **repo-mapper-mcp** (`:8002`) — `map_architecture` walks a repository, parses
-  Python with an AST extractor (Java/Go/TypeScript via heuristics), and returns a
-  Mermaid **module dependency graph**: a `flowchart` whose nodes are source
-  modules (grouped into package subgraphs) and whose edges are the intra-repo
-  imports between them, each annotated with its absolute file path. It prunes
-  test, build, and vendor directories — and `__init__.py` re-export hubs — so the
-  graph shows the real structure (which modules are shared cores, which are
-  leaves) rather than drowning in noise; `semantic_search` provides keyword
-  retrieval over the indexed code.
-- **github-mcp** (`:8001`) — the Git/GitHub workflow surface: `get_github_issue`,
-  `read_file`, `create_feature_branch`, `push_wip_commit`, `submit_pull_request`,
-  and `poll_github_actions_logs`. `get_github_issue` is fork-aware — when the
-  local clone is a fork it resolves the upstream `parent` via the GitHub API and
-  reads the issue there, since forks don't carry their own issues. This is what
-  lets the agent start from a real issue ("fix #175") rather than a hand-fed
-  solution: the issue text becomes the spec it must diagnose against.
+- **repo-mapper-mcp** (`:8002`) — `map_architecture` parses a repo (AST for
+  Python, heuristics for Java/Go/TypeScript) into a Mermaid **module
+  dependency graph**: source modules as nodes, intra-repo imports as edges,
+  grouped into package subgraphs, each annotated with its file path.
+  Test/build/vendor dirs and `__init__.py` re-export hubs are pruned so the
+  real structure shows; `semantic_search` adds keyword retrieval.
+- **github-mcp** (`:8001`) — `get_github_issue`, `read_file`,
+  `create_feature_branch`, `push_wip_commit`, `submit_pull_request`,
+  `poll_github_actions_logs`. `get_github_issue` is fork-aware: it resolves
+  the upstream `parent` via the GitHub API when the clone is a fork, since
+  forks don't carry their own issues — this is what lets the agent start from
+  a real issue rather than a hand-fed solution.
 
-The agent consumes them through ADK's `McpToolset` with `SseConnectionParams`,
-following the Day 2 discovery → configuration → connection pattern. SSE transport
-(rather than stdio) was chosen specifically to avoid subprocess-handle issues on
-Windows; the servers start in background threads when the agent module loads, and
-the app waits for both ports to accept connections before serving. This is a
-genuine protocol boundary — the agent talks MCP, not in-process function calls.
+The agent consumes both via ADK's `McpToolset` with `SseConnectionParams`.
+SSE (not stdio) avoids subprocess-handle issues on Windows; servers start in
+background threads when the agent module loads.
 
 ### 3.3 Agent Skills (Day 3)
 
-Day 3 defines skills as folders (`SKILL.md` + optional scripts/examples)
-implementing *progressive disclosure*: metadata is always in context (~50
-tokens), but a skill's body only loads when triggered. auto-contrib defines four
-such skills loaded via `SkillToolset`:
+Skills are folders (`SKILL.md` + scripts/examples) implementing *progressive
+disclosure* — metadata always in context, body loads only when triggered.
+Four skills, loaded via `SkillToolset`:
 
-- **architecture-mapper** — how to map and visualize a repo.
-- **code-implementer** — a **test-aware** source-fix workflow: locate the code,
-  read the *existing* tests that cover it, then propose one precise fix that keeps
-  them passing and hand off.
-- **test-debugger** — manage the CI/CD polling loop and interpret failures.
-- **pr-compliance-formatter** — enforce Conventional Commits and a clean PR body.
+- **architecture-mapper** — map/visualize a repo.
+- **code-implementer** — **test-aware**, not test-first: reads the *existing*
+  tests covering the code, then proposes one fix that keeps them passing. It
+  does not author a new test file, because the approval gate stages one edit
+  per session and fix-plus-new-test is two; authoring a regression test
+  alongside the fix is the planned multi-edit (v2) enhancement.
+- **test-debugger** — manage the CI/CD polling loop.
+- **pr-compliance-formatter** — Conventional Commits + clean PR body.
 
-The `code-implementer` skill is deliberately **test-aware rather than
-test-first**: it reasons about the existing suite and fixes the source so CI stays
-green, but it does not author a *new* test file, because the approval gate stages
-one contiguous edit per session and a fix-plus-new-test is two edits. Authoring a
-regression test alongside the fix is the planned multi-edit (v2) enhancement; the
-skill flags when one is warranted but proposes only the source change. This keeps
-the agent's behavior deterministic and matches what the single-edit gate can
-actually deliver — an honest fit between the skill's know-how and the tool's reach.
-
-This is the Day 3 "Skills = know-how, MCP = reach" distinction made concrete: the
-MCP servers can *push a commit*, but the `code-implementer` skill encodes *when
-and how* to do so responsibly (fix against the existing tests, hand off to CI).
-The skills ship with
-example resources (`diagram_example.md`, `pr_description_example.md`) and helper
-scripts (`generate_mermaid.py`, `squash_wip_commits.py`) that load only on
-demand.
+This is Day 3's "Skills = know-how, MCP = reach" made concrete: MCP can *push
+a commit*, but `code-implementer` encodes *when and how* to do so
+responsibly. Skills ship with example resources and helper scripts that load
+only on demand.
 
 ### 3.4 Security Features (Days 4 & 5)
 
-Security is where the project leans hardest into the white papers, implementing
-three of the Day 4/Day 5 patterns:
-
-**Human-in-the-Loop Approval Gate (the "Vibe Diff").** The agent *cannot* edit a
-file on its own. `request_user_approval` validates that the proposed `old_text`
-actually exists in the target file, stores the pending edit, and pauses the run.
-The browser then renders the **exact code diff** — a compact red/green hunk of the
-proposed `old_text`→`new_text` (not just a description), so the human approves on
-what they can *see* — and the card glows to signal it is awaiting a decision. Only
-on approval does a separate, LLM-free endpoint apply the edit and push. This is the
-Day 5 Zero-Trust "HITL checkpoint" — authority over the repository never leaves
+**HITL Approval Gate (the "Vibe Diff").** The agent *cannot* edit a file on
+its own. `request_user_approval` validates the proposed `old_text` exists,
+stores the pending edit, and pauses. The browser renders the **exact
+red/green code diff** — not just a description — and the card glows to
+signal it's awaiting a decision. Only on approval does a separate, LLM-free
+endpoint apply the edit and push. Authority over the repository never leaves
 the human.
 
-**Policy Server (structural + semantic + scope gating).** Implemented as an ADK
-`before_tool_callback`, every tool call passes through three tiers before it can
-run: structural checks (e.g. `edit_file` must have non-empty, non-identical
-old/new text; branch names can't be `main`/`master`; PR titles must match
-Conventional Commits), a semantic check that blocks genuinely destructive disk
-operations, and a write-scope check that confines file writes to an explicit
-allowlist using `os.path.commonpath` (so a sibling directory sharing a name
-prefix can't be smuggled in). This is the Day 5 Policy Server pattern — a
-structural + semantic gate that can later be upgraded to an LLM classifier
-without changing the interface.
+**Policy Server.** An ADK `before_tool_callback` gates every call through
+three tiers: structural checks (non-empty/non-identical edits, protected
+branch names, Conventional-Commits titles), a semantic check blocking
+destructive disk operations, and a write-scope check confining writes via
+`os.path.commonpath`.
 
-**Context Hygiene (Context Resolver).** Following Day 5's `ContextResolver`
-pattern with `[[VARIABLE]]` placeholders, secrets and PII (GitHub tokens,
-prefix-anchored vendor API keys, emails, IPs, SSH-key blocks) are masked before
-external text enters the model's context. It is wired into **both**
-external-data ingestion paths — fetched issue text (`get_github_issue`) and
-failed-build CI logs (`poll_github_actions_logs`) — the two classic
-untrusted-input vectors, so neither reaches the agent unscrubbed. The masking
-patterns are deliberately conservative (prefix-anchored, not a blanket
-alphanumeric match) so they never corrupt legitimate code such as commit SHAs or
-the regex patterns and hashes that routinely appear in issue bodies.
+**Context Hygiene.** Following Day 5's `ContextResolver` pattern,
+secrets/PII (tokens, emails, IPs, SSH keys) are masked before external text
+enters the model's context — wired into **both** ingestion paths: fetched
+issue text and CI logs. Masking is prefix-anchored, not a blanket match, so
+it never corrupts legitimate commit SHAs or regex patterns in issue bodies.
 
 ### 3.5 Deployability (Days 1, 2 & 5)
 
-The project is container-ready: a `Dockerfile` builds the app (copying the agent,
-skills, web UI, and eval assets), and `agents-cli-manifest.yaml` targets Cloud
-Run. Because the capstone only requires three concept areas and we already meet
-four in code, deployability is demonstrated as packaging-and-manifest readiness
-rather than a permanently hosted URL — an honest scoping choice given the
-single-session, human-gated design.
+Container-ready: a `Dockerfile` builds the app; `agents-cli-manifest.yaml`
+targets Cloud Run. Since the capstone needs three concept areas and four are
+already met in code, deployability is shown as packaging readiness rather
+than a hosted URL — an honest scoping choice for a single-session,
+human-gated design.
 
 ---
 
 ## 4. Demo Walkthrough
 
-The headline demo runs against a **real PyPI library** — a fork of
-`python-slugify` with a genuine open issue (#175, *"--regex-pattern option
-ignored by CLI"*). A controlled sandbox repo (`auto-contrib-sandbox`, a buggy
-`Calculator` with a matching test suite) is used for fast regression runs.
+🎥 Watch the recorded demo: https://www.youtube.com/watch?v=sbzLFtCBOos
 
-0. **Fetch the issue.** The user enters *"Fix issue #175 in the repo at
-   ../python-slugify"*. The agent calls `get_github_issue`; because the clone is
-   a fork, the tool auto-detects the upstream `un33k/python-slugify` and returns
-   the issue title, body, and comments. The agent now has the symptom — not a
-   solution — as its spec.
-1. **Map.** `map_architecture` returns a Mermaid **dependency graph** — modules as
-   nodes, imports as edges — rendered live as a zoomable preview with a **⛶
-   fullscreen** view for the whole picture. With tests, build dirs, and
-   `__init__.py` re-export hubs filtered out, the graph shows how the package
-   actually fits together: for slugify, the `__main__` CLI depends on the core
-   `slugify` module — the very edge that frames issue #175.
-2. **Locate & diagnose.** The agent calls `read_file` on the suspected file
-   (`slugify/__main__.py`), reads the actual code, and pinpoints the bug itself:
-   the `--regex-pattern` arg is never passed from `slugify_params` to `slugify`.
-3. **Branch.** `create_feature_branch` forks from the repo's real default branch
-   (resolved from `origin/HEAD` — here `master`, not `main`) and fast-forwards
-   it, so a fix never stacks on a stale branch.
-4. **Propose & pause.** `request_user_approval` presents the plain-English
-   rationale and the precise one-line old/new diff. Execution pauses; the UI
-   shows the proposed change with approve/reject buttons.
-5. **Approve & push.** On approval, the LLM-free `/api/approve` endpoint applies
-   the edit, commits, and pushes the branch to the fork.
-6. **PR & CI.** **Submit PR** opens a Conventional-Commits pull request — base
-   branch auto-detected (`master`), body filled from the repo's own template or,
-   when it has none (as here), from auto-contrib's default PR-body template that
-   honestly checks only what it can vouch for (human-approved diff, CI green).
-   Because the repo gates CI on the `pull_request` event, the workflow starts
-   only now; the endpoint polls the PR's run and the dashboard reports it green.
+The recorded demo runs against a **real PyPI library** — a fork of
+`python-validators/validators` ([svetanis/validators](https://github.com/svetanis/validators))
+with a genuine open issue (#413, *"`hostname()` lets long hostnames through if
+they contain periods"*). Two other real runs back it up: **`python-slugify`
+#175** ([svetanis/python-slugify](https://github.com/svetanis/python-slugify)),
+and a controlled sandbox
+([svetanis/auto-contrib-sandbox](https://github.com/svetanis/auto-contrib-sandbox))
+used for fast, **symptom-driven** regression runs — no issue number at all.
 
-Every step is streamed token-by-token to the terminal pane, making the agent's
-trajectory fully observable — which doubles as the Day 4 "trajectory quality"
-evidence.
+![The auto-contrib dashboard](media/1.png)
+
+0. **Fetch the issue.** The user enters *"Fix issue #413 in the repo at
+   ../validators"*. The agent calls `get_github_issue`; the clone is a fork,
+   so it auto-detects `python-validators/validators` and returns a one-line
+   repro: a 256-character hostname slipping past validation. The agent has
+   the symptom, not a solution.
+1. **Map.** `map_architecture` returns a live dependency graph, zoomable with
+   a **⛶ fullscreen** view. With tests, build dirs, and `__init__.py` hubs
+   filtered out, it shows how the ~30-module package fits together: `utils`
+   is the shared core, and `hostname` builds on `domain` and `ip_address` —
+   the very edges behind issue #413.
+2. **Locate & diagnose.** `read_file` on `hostname.py` (and `domain.py`)
+   reveals the bug: `hostname()` never checks total length, so a long,
+   multi-label name passes each 63-char label check while exceeding the RFC
+   limit overall.
+3. **Branch.** `create_feature_branch` forks from the real default branch
+   (`master`, resolved from `origin/HEAD`) and fast-forwards it first.
+4. **Propose & pause.** `request_user_approval` presents the rationale and a
+   one-line diff (`if not value:` → `if not value or len(value) > 255:`). The
+   Vibe Diff card glows amber and renders the exact red/green diff.
+5. **Approve & push.** The LLM-free `/api/approve` endpoint applies the
+   edit, commits, and pushes.
+6. **PR & CI.** **Submit PR** opens
+   [PR #1](https://github.com/svetanis/validators/pull/1) — base
+   auto-detected (`master`), body from auto-contrib's default template. CI
+   (gated on the `pull_request` event) runs the suite across **five Python
+   versions (3.10–3.14)** plus **Bandit** and a **SAST** scan — all eight
+   checks pass.
+
+One honest note: no *existing* test covered the >255-length case, so green CI
+proves the fix didn't break anything, not that a regression test locks it in
+— the "test-aware, not test-first" boundary from §3.3.
+
+The `python-slugify` #175 run followed the identical trajectory on a
+different repo (the CLI never forwarded `--regex-pattern` to `slugify()`) and
+also finished green, confirming the flow generalizes.
+
+![Vibe Diff glowing amber with the red/green diff for python-slugify #175](media/5.png)
+
+The sandbox `Calculator` repo confirms the loop without any issue number: a
+plain symptom ("the `add()` method is broken") produced a real,
+human-approved PR
+([#3](https://github.com/svetanis/auto-contrib-sandbox/pull/3)) — and since
+this repo *does* ship its own PR template, `submit_pull_request` correctly
+filled that one instead of the default, exercising both branches of the
+template logic in §3.2. More screenshots (fullscreen map, PR pages, CI runs)
+are in the [project README](https://github.com/svetanis/auto-contrib#screenshots).
 
 ---
 
 ## 5. Evaluation
 
-Per Day 3's Evaluation-Driven Development and Day 4's seven evaluation
-dimensions, auto-contrib ships an `evals/` suite driven by a golden dataset of
-five scenarios spanning Java, TypeScript, Go, Python, and Markdown
-(`golden_dataset.json`). The suite scores two dimensions automatically:
+Per Day 3's Evaluation-Driven Development, auto-contrib ships an `evals/`
+suite driven by a golden dataset of five scenarios (Java, TypeScript, Go,
+Python, Markdown). It scores:
 
-- **Trajectory quality** — does the agent call the expected tools
-  (`map_architecture` → `read_file` → `create_feature_branch` →
-  `request_user_approval`) in the right order? Correct ordering earns a bonus.
-- **PR compliance** — fractional credit for matching the expected modified files,
-  plus credit for a Conventional-Commits title of the correct type.
+- **Trajectory quality** — correct tool order (`map_architecture` →
+  `read_file` → `create_feature_branch` → `request_user_approval`), with an
+  ordering bonus.
+- **PR compliance** — fractional credit for matching expected files, plus a
+  Conventional-Commits title check.
 
 A `generate_llm_judge_prompt` helper produces an LLM-as-a-judge prompt for
-semantic evaluation ("did the agent fix the root cause securely?"), implementing
-the Day 4 multimodal/semantic scoring idea. The runner executes each scenario
-against the live agent and aggregates scores, so evaluation is connected to real
-runs rather than being a static rubric.
+semantic scoring ("did the agent fix the root cause securely?"). The runner
+executes each scenario against the live agent, so evaluation is connected to
+real runs.
 
 ---
 
 ## 6. Engineering Discipline & Honest Limitations
 
-In the spirit of Day 5 ("Vibe Coding is not Vibe-in-Production"), a few honest
-notes:
+In the spirit of Day 5 ("Vibe Coding is not Vibe-in-Production"):
 
-- **PRs open within the fork, not upstream.** The full demo contributes to a
-  fork of a real library (feature branch → the fork's default branch), not to
-  the original repo — deliberately, for zero maintainer risk. Cross-fork PRs
-  (`head=fork:branch` against the upstream `/pulls` endpoint) are a **proposed
-  v2 enhancement**, intentionally left unbuilt in v1 because opening a PR on a
-  third party's repository is a real outward-facing action that belongs behind an
-  explicit, separately-confirmed opt-in; the `closes=` hook in the PR-body builder
-  is already wired for the upstream-issue link when that lands.
-- **Fixes are a single contiguous block.** `request_user_approval` proposes one
-  diff per session — a deliberate fit for focused bug fixes and the approval UX,
-  not sweeping multi-file refactors. Some real bugs legitimately span several
-  non-adjacent functions (a finance-validator issue we tested needed both the
-  checksum helper *and* its caller's format guard), which one block cannot express.
-  Importantly, this is a limit of the single-block **approval gate**, not of the
-  model — the LLM reasons about multi-function fixes fine. A **proposed v2
-  enhancement** would let the gate accept a *list* of edits, render each as its own
-  hunk, and apply them atomically under one commit; the tool, endpoint, policy
-  checks, and diff renderer already exist and would each extend from one edit to a
-  list, so the work is edge cases (apply-ordering, all-or-nothing), not
-  architecture — deferred only to keep the v1 demo flow stable.
-- **Session state is single-user.** Pending edits and branch tracking are
-  process-scoped, which is correct for the supervised, single-session demo but
-  would need per-session keying before multi-tenant hosting.
-- **HITL is implemented via a pause-and-resume exception** caught by the API
-  layer; it works reliably but is a candidate for ADK's native interrupt
-  mechanism as that matures.
+- **PRs open within the fork, not upstream** — deliberately, for zero
+  maintainer risk. Cross-fork PRs to the original repo are a proposed v2
+  enhancement, left unbuilt because opening a PR on a third party's repo
+  needs an explicit opt-in and live testing first.
+- **Fixes are a single contiguous block.** The approval gate reviews one
+  diff per session — right for focused fixes, not multi-file refactors. Some
+  bugs legitimately span non-adjacent functions (a finance-validator issue we
+  tested needed both a checksum helper and its caller's format guard); this
+  is a limit of the **gate**, not the model — the LLM reasons about
+  multi-function fixes fine. Multi-edit support (a list of edits, applied
+  atomically) is a scoped v2 enhancement, not an architecture change.
+- **Session state is single-user** — process-scoped, correct for the
+  supervised demo but needs per-session keying before multi-tenant hosting.
+- **HITL uses a pause-and-resume exception** caught by the API layer;
+  reliable, but a candidate for ADK's native interrupt mechanism as it
+  matures.
 
-These are documented rather than hidden because the judging rubric rewards
-agentic-engineering discipline — knowing where the bounds are is part of staying
-inside them.
+These are documented, not hidden — the rubric rewards knowing where the
+bounds are.
 
 ---
 
 ## 7. Summary
 
-auto-contrib turns the multi-step, intimidating act of contributing a fix to an
-unfamiliar repository into a single supervised session, while never surrendering
-human authority over the code — and it does so on **genuine open-source repos**,
-starting from a **real issue number** rather than a hand-fed answer. It applies
-the capstone's concepts as working software, not slideware: an ADK agent
-orchestrating **two MCP servers** (issue + repo intelligence and the Git/GitHub
-workflow) and **four Agent Skills**, gated by a **three-tier policy server**, a
-**context-hygiene resolver** on every untrusted-input path, and a **human
-approval checkpoint**, with a **connected evaluation suite** and a
-**container-ready deployment** path. It is a small, honest, and genuinely useful
-demonstration of the white papers' core lesson: the harness — the tools, skills,
-and guardrails engineered around the model — is what makes an agent trustworthy.
+auto-contrib turns contributing a fix to an unfamiliar repository into a
+single supervised session, without surrendering human authority — on
+**genuine open-source repos**, from a **real issue number**. It applies the
+capstone's concepts as working software: an ADK agent orchestrating **two MCP
+servers**, **four Agent Skills**, a **three-tier policy server**, a
+**context-hygiene resolver**, and a **human approval checkpoint**, with a
+**connected evaluation suite** and a **container-ready deployment** path. The
+harness — tools, skills, and guardrails engineered around the model — is what
+makes an agent trustworthy.
 
 ---
 
-*Word count ≈ 2,050. To reach the ~2,500-word target, drop in concrete artifacts
-from the recorded run: a screenshot of the zoomable architecture map, the real
-`python-slugify` PR URL with CI green, and the eval suite's actual scores.*
+*Demo video: https://www.youtube.com/watch?v=sbzLFtCBOos — recorded against
+`python-validators/validators` issue #413. Artifact: PR
+https://github.com/svetanis/validators/pull/1, green across 5 Python
+versions, Bandit, and a SAST scan. A second real-repo run (`python-slugify`
+#175) and a sandbox regression run are referenced in §4.*
