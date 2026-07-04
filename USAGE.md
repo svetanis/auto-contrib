@@ -65,11 +65,16 @@ Reference the issue number; the agent calls `get_github_issue` first and uses th
 issue text as its spec.
 
 ```
+Fix issue #413 in the repo at ../validators
+```
+
+```
 Fix issue #175 in the repo at ../python-slugify
 ```
 
-If the local clone is a **fork**, the agent auto-detects the upstream repo and
-reads the issue there (forks don't carry their own issues).
+Both have been run end-to-end (real fork, real issue, PR opened, CI green). If
+the local clone is a **fork**, the agent auto-detects the upstream repo and reads
+the issue there (forks don't carry their own issues).
 
 ---
 
@@ -87,13 +92,20 @@ reads the issue there (forks don't carry their own issues).
 
 ## 5. Running against a real repo (fork workflow)
 
-1. **Fork** the target repo (e.g. `un33k/python-slugify`) to your GitHub account.
+1. **Fork** the target repo (e.g. `python-validators/validators` or
+   `un33k/python-slugify`) to your GitHub account.
 2. On your fork: **Settings → Actions → enable workflows.** Forks have Actions
    disabled by default — this is the #1 reason CI never runs.
 3. **Clone your fork** locally. Its `origin` is your fork (you have push access).
 4. Point the agent at the clone and use either mode above. The PR opens within
    your fork (feature branch → fork's default branch) — zero risk to the
    upstream maintainer.
+
+> Working reference forks from actual test runs:
+> [svetanis/validators](https://github.com/svetanis/validators) (issue #413,
+> PR [#1](https://github.com/svetanis/validators/pull/1)) and
+> [svetanis/python-slugify](https://github.com/svetanis/python-slugify)
+> (issue #175).
 
 > **The PR always targets your fork, never the upstream repo.** Opening a PR
 > against the original maintainers' repo is a *proposed v2 enhancement* and is

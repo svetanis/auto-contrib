@@ -20,6 +20,21 @@ Built for the Kaggle *AI Agents: Intensive Vibe Coding* capstone with
 
 📄 Full competition writeup: [kaggle-writeup.md](kaggle-writeup.md)
 🚀 How to run it (step-by-step): [USAGE.md](USAGE.md)
+🎥 Demo video: https://www.youtube.com/watch?v=sbzLFtCBOos
+📦 This repo: https://github.com/svetanis/auto-contrib
+
+---
+
+## Repositories
+
+- **This project:** https://github.com/svetanis/auto-contrib
+- **Real-repo demo (recorded video):** issue #413 on
+  https://github.com/svetanis/validators (fork of `python-validators/validators`)
+- **Real-repo demo (also verified):** issue #175 on
+  https://github.com/svetanis/python-slugify (fork of `un33k/python-slugify`)
+- **Sandbox test repo:** https://github.com/svetanis/auto-contrib-sandbox — a
+  buggy `Calculator` with a matching test suite, used for fast, symptom-driven
+  regression runs during development
 
 ---
 
@@ -133,7 +148,10 @@ Open <http://127.0.0.1:8080> and enter a prompt. Two modes:
   > The calculator tests are failing at ../auto-contrib-sandbox. Investigate and fix.
 
 - **Issue-driven** (the agent fetches the GitHub issue and works from it):
-  > Fix issue #175 in the repo at ../python-slugify
+  > Fix issue #413 in the repo at ../validators
+
+  Also verified end-to-end against `python-slugify` #175, and (symptom-driven,
+  no issue number) a sandbox `Calculator` repo used for fast regression runs.
 
 In issue-driven mode the agent calls `get_github_issue` first; if the local
 clone is a fork, it auto-detects the upstream repo (issues live upstream, not on
@@ -258,3 +276,11 @@ agents-cli deploy
   about multi-function fixes fine; it is the single-block **gate** that is the
   scoping limit.
 - **Per-session state** for multi-tenant hosting (see limitations above).
+
+---
+
+## License
+
+Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) —
+see [LICENSE](LICENSE). You're free to share and adapt this work, including
+commercially, with attribution.
