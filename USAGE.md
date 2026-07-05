@@ -98,8 +98,8 @@ the issue there (forks don't carry their own issues).
    disabled by default — this is the #1 reason CI never runs.
 3. **Clone your fork** locally. Its `origin` is your fork (you have push access).
 4. Point the agent at the clone and use either mode above. The PR opens within
-   your fork (feature branch → fork's default branch) — zero risk to the
-   upstream maintainer.
+   your fork (feature branch → fork's default branch) — no writes to the
+   upstream repository.
 
 > Working reference forks from actual test runs:
 > [svetanis/validators](https://github.com/svetanis/validators) (issue #413,

@@ -12,7 +12,7 @@ request, and polls GitHub Actions CI on the PR.
 It works on **real repositories**: point it at a fork of an open-source project
 and it auto-detects the upstream parent to read the issue, branches from the
 repo's real default branch (`main` *or* `master`), and opens the PR back to the
-fork — no maintainer risk.
+fork — no writes to any upstream repository.
 
 Built for the Kaggle *AI Agents: Intensive Vibe Coding* capstone with
 **Google ADK**, **Gemini 2.5 Flash**, the **Model Context Protocol**, and
@@ -53,8 +53,8 @@ get_github_issue → map_architecture → read_file → create_feature_branch
 otherwise the prompt itself is the spec. The PR is opened **before** the CI poll
 because many real repos only run CI on the `pull_request` event.
 
-The agent cannot edit a file on its own: every change passes through a human
-approval gate (the "Vibe Diff") and a policy server before it can run.
+The agent has no file-edit tool: every **code change** is staged through the
+human approval gate, and every tool call passes the policy server before it runs.
 
 ---
 
@@ -81,9 +81,9 @@ auto-contrib Agent  (ADK · Gemini 2.5 Flash, rate-limited)
      │                                    poll_github_actions_logs
      │
      ├── Security Layer
-     │     ├── Policy Server      (before_tool_callback: structural + semantic + scope)
-     │     ├── Context Resolver   (secret/PII masking on ingested CI logs)
-     │     └── HITL Approval Gate (request_user_approval — the "Vibe Diff")
+     │     ├── Policy Server      (before_tool_callback: structural + keyword + scope)
+     │     ├── Context Resolver   (secret/PII masking on issue text + CI logs)
+     │     └── HITL Approval Gate (request_user_approval — human-approved diff)
      │
      └── FastAPI + SSE  (streaming dashboard; live, zoomable Mermaid diagram)
 ```
@@ -209,11 +209,13 @@ auto-contrib implements three Zero-Trust patterns from the capstone white papers
 - **HITL Approval Gate** — `request_user_approval` validates the proposed
   `old_text` exists in the target file, then pauses the run. A separate,
   LLM-free `/api/approve` endpoint applies the edit only after a human approves.
-- **Policy Server** — an ADK `before_tool_callback` gates every tool call:
+- **Policy Server** — an ADK `before_tool_callback` gates tool calls:
   structural checks (non-empty/non-identical edits, protected branch names,
-  Conventional-Commits PR titles), a semantic check that blocks genuinely
-  destructive disk operations, and a write-scope check that confines writes to
-  `AUTOCONTRIB_ALLOWED_DIRS` using `os.path.commonpath`.
+  Conventional-Commits PR titles), a keyword screen that blocks common
+  destructive disk operations (`rm -rf /`, `shutil.rmtree`, `os.remove`, …) — a
+  deterministic stand-in for Day 5's LLM-based semantic gate — and a write-scope
+  check that, when `AUTOCONTRIB_ALLOWED_DIRS` is set, confines writes using
+  `os.path.commonpath`.
 - **Context Hygiene** — `context_resolver.resolve()` masks secrets/PII
   (GitHub tokens, prefix-anchored vendor API keys, emails, IPs, SSH-key blocks)
   on **both** external-data ingestion paths — fetched issue text
@@ -244,7 +246,7 @@ ships an LLM-as-a-judge prompt for semantic scoring.
 ## Tests
 
 ```bash
-uv run pytest tests/unit tests/integration
+uv run pytest tests
 ```
 
 ---
@@ -273,10 +275,11 @@ agents-cli deploy
 - **Fork-to-fork PRs (by design for v1).** On a real OSS repo the PR opens
   within your own fork (feature branch → fork's default branch), never upstream.
   This is deliberate: it exercises the full contribution loop on genuine code
-  with **zero risk to any maintainer**. Cross-fork PRs to the original repo are a
-  **proposed v2 enhancement** — see [Proposed enhancements (v2)](#proposed-enhancements-v2).
-- **Single-file fixes.** `request_user_approval` proposes one file's diff per
-  session — well-suited to focused bug fixes, not sweeping multi-file refactors.
+  with **no writes to any upstream repository**. Cross-fork PRs to the original
+  repo are a **proposed v2 enhancement** — see [Proposed enhancements (v2)](#proposed-enhancements-v2).
+- **Single-block fixes.** `request_user_approval` stages one contiguous diff per
+  session — a subset of even single-file changes; well-suited to focused bug
+  fixes, not sweeping multi-file refactors.
 - **Session state** (pending edit, branch tracking) is process-scoped — correct
   for the supervised single-session demo, but needs per-session keying before
   multi-tenant hosting.
